@@ -1,0 +1,544 @@
+# Importation of modules and library
+import numpy as np                         # Good module for matrix and matrix operation
+import matplotlib.pyplot as plt            # Module to produce figure
+plt.switch_backend('agg')
+import matplotlib as mpl
+import matplotlib.colors as colors
+import matplotlib.cm as cm
+import os                                  # Used to convert png to other format
+import rpnpy.librmn.all as rmn             # Module to read RPN files
+from rotated_lat_lon import RotatedLatLon  # Module to project field on native grid (created by Sasha Huziy)
+from mpl_toolkits.basemap import Basemap,maskoceans
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from scipy.ndimage import gaussian_filter
+from matplotlib.patches import Polygon
+from scipy import stats
+import scipy as sc
+import pylab as pl
+
+#define functions
+
+#define a function to extract data
+def extractdata(filename,varname):
+    fid_X = rmn.fstopenall(filename,rmn.FST_RO)   # Open the file
+    # Search for the key/handle of the first record to read
+    key_X = rmn.fstinf(fid_X,nomvar=varname)
+    TN2_X = []
+    while key_X != None:
+        rec_X = rmn.fstluk(key_X)
+        TN2_X.append(rec_X['d'])
+        key_X = rmn.fstinfx(key_X,fid_X,nomvar=varname)
+    
+    TN_X = np.array(TN2_X)*1000*86400*122
+    TN_X_mean=np.nanmean(TN_X,axis=0)
+    rmn.fstcloseall(fid_X)
+    return TN_X,TN_X_mean
+
+#define a function to extract latlon info
+def latlonreg(filename,varname):
+    fid_X = rmn.fstopenall(filename,rmn.FST_RO)
+    key_X = rmn.fstinf(fid_X,nomvar=varname)
+    rec_X = rmn.fstluk(key_X)
+    mygrid = rmn.readGrid(fid_X,rec_X)
+    latlondict = rmn.gdll(mygrid)               # Create 2-D lat and lon fields from the grid information
+    lat2 = latlondict['lat']                     # Assign 'lat' to 2-D latitude field
+    lon2 = latlondict['lon']
+    lat=lat2[ll:,latmi:latma]
+    lon=lon2[ll:,latmi:latma]
+    tics = rmn.fstlir(fid_X,nomvar='^^', ip1=rec_X['ig1'],ip2=rec_X['ig2'],ip3=rec_X['ig3'])
+    return (lat,lon,tics)
+
+#define a difference function
+def diff_sims(sim1,sim2):
+    diff=sim1-sim2
+    diff1=np.mean(diff,axis=0)
+    return diff,diff1
+#define a function for statistical test
+def wilctest(diff_3D):
+    D=np.apply_along_axis(sc.stats.wilcoxon,axis=0,arr=diff_3D)
+    D_X=D[1]
+    D_X= maskoceans(lon,lat,D_X[:,:])
+    levels_X=[np.min(D_X),0.05,np.max(D_X)]
+    return D_X,levels_X
+
+#############################
+##############################
+##############################
+#define a path
+filepath1=''
+filepath=''
+#define your file path
+filename_curCTRL= filepath1+'CTRL/PR/JJAS/JJAS_ktrsnt_ME_PD_PR'
+filename_futCTRL= filepath+'CTRL/PR/JJAS/JJAS_ktrsnt_ME_RCP85_PR'
+filename_futGGW= filepath+'GGW/PR/JJAS/JJAS_ktrsnt_ME_GGWhigh85_PR'
+filename_futGGWrv= filepath+'GGWrv/PR/JJAS/JJAS_ktrsnt_ME_GGWlow85_PR'
+filename_futGGWlv= filepath+'GGWlv/PR/JJAS/JJAS_ktrsnt_ME_GGWmed85_PR'
+filename_futGGWex= filepath+'GGW_ex/PR/JJAS/JJAS_ktrsnt_ME_GGWext85_PR'
+filename_futCTRL26= filepath+'CTRL/PR_26/JJAS/JJAS_ktrsnt_ME_RCP26_PR'
+filename_futGGW26= filepath+'GGW/PR_26/JJAS/JJAS_ktrsnt_ME_GGWhigh26_PR'
+filename_futGGWrv26= filepath+'GGWrv/PR_26/JJAS/JJAS_ktrsnt_ME_GGWlow26_PR'
+filename_futGGWlv26= filepath+'GGWlv/PR_26/JJAS/JJAS_ktrsnt_ME_GGWmed26_PR'
+filename_futGGWex26= filepath+'GGW_ex/PR_26/JJAS/JJAS_ktrsnt_ME_GGWext26_PR'
+
+#define name of the variable
+varname = 'PR'
+
+#define lat/lon indices to cut the domain
+ll=655
+latmi=25
+latma=365
+
+#extract lat lon
+lat,lon,tics=latlonreg(filename_curCTRL,varname)
+#extract data
+PR_curCTRL,PRmean_curCTRL=extractdata(filename_curCTRL, varname)
+PR_curCTRL=PR_curCTRL[:,ll:,latmi:latma]
+PRmean_curCTRL=(PRmean_curCTRL[ll:,latmi:latma])
+PR_futCTRL,PRmean_futCTRL=extractdata(filename_futCTRL, varname)
+PR_futCTRL=PR_futCTRL[:,ll:,latmi:latma]
+PRmean_futCTRL=(PRmean_futCTRL[ll:,latmi:latma])
+PR_futGGW,PRmean_futGGW=extractdata(filename_futGGW, varname)
+PR_futGGW=PR_futGGW[:,ll:,latmi:latma]
+PRmean_futGGW=(PRmean_futGGW[ll:,latmi:latma])
+PR_futGGWrv,PRmean_futGGWrv=extractdata(filename_futGGWrv, varname)
+PR_futGGWrv=PR_futGGWrv[:,ll:,latmi:latma]
+PRmean_futGGWrv=(PRmean_futGGWrv[ll:,latmi:latma])
+PR_futGGWlv,PRmean_futGGWlv=extractdata(filename_futGGWlv, varname)
+PR_futGGWlv=PR_futGGWlv[:,ll:,latmi:latma]
+PRmean_futGGWlv=(PRmean_futGGWlv[ll:,latmi:latma])
+PR_futGGWex,PRmean_futGGWex=extractdata(filename_futGGWex, varname)
+PR_futGGWex=PR_futGGWex[:,ll:,latmi:latma]
+PRmean_futGGWex=(PRmean_futGGWex[ll:,latmi:latma])
+PR_futCTRL26,PRmean_futCTRL26=extractdata(filename_futCTRL26, varname)
+PR_futCTRL26=PR_futCTRL26[:,ll:,latmi:latma]
+PRmean_futCTRL26=(PRmean_futCTRL26[ll:,latmi:latma])
+PR_futGGW26,PRmean_futGGW26=extractdata(filename_futGGW26, varname)
+PR_futGGW26=PR_futGGW26[:,ll:,latmi:latma]
+PRmean_futGGW26=(PRmean_futGGW26[ll:,latmi:latma])
+PR_futGGWrv26,PRmean_futGGWrv26=extractdata(filename_futGGWrv26, varname)
+PR_futGGWrv26=PR_futGGWrv26[:,ll:,latmi:latma]
+PRmean_futGGWrv26=(PRmean_futGGWrv26[ll:,latmi:latma])
+PR_futGGWlv26,PRmean_futGGWlv26=extractdata(filename_futGGWlv26, varname)
+PR_futGGWlv26=PR_futGGWlv26[:,ll:,latmi:latma]
+PRmean_futGGWlv26=(PRmean_futGGWlv26[ll:,latmi:latma])
+PR_futGGWex26,PRmean_futGGWex26=extractdata(filename_futGGWex26, varname)
+PR_futGGWex26=PR_futGGWex26[:,ll:,latmi:latma]
+PRmean_futGGWex26=(PRmean_futGGWex26[ll:,latmi:latma])
+
+#define plot objects
+(Grd_xlat1,Grd_xlon1,Grd_xlat2,Grd_xlon2) = rmn.cigaxg('E', tics['ig1'],tics['ig2'],tics['ig3'],tics['ig4'])
+rll = RotatedLatLon( lon1=Grd_xlon1, lat1=Grd_xlat1, lon2=Grd_xlon2, lat2=Grd_xlat2)
+m = rll.get_basemap_object_for_lons_lats(lon, lat,resolution="h")
+xx,yy = m(lon,lat)
+#subtract 360 for longitude values lower than 320
+lon=np.where(lon < 320, lon, lon-360)
+
+#calculate differences between simulations
+#diff3D_CTRLfutvsCTRLcur1,diff_CTRLfutvsCTRLcur1=diff_sims(PR_futCTRL,PR_curCTRL)
+diff3D_GGWfutvsCTRLfut1,diff_GGWfutvsCTRLfut1=diff_sims(PR_futGGW,PR_futCTRL)
+diff3D_GGWrvfutvsCTRLfut1,diff_GGWrvfutvsCTRLfut1=diff_sims(PR_futGGWrv,PR_futCTRL)
+diff3D_GGWlvfutvsCTRLfut1,diff_GGWlvfutvsCTRLfut1=diff_sims(PR_futGGWlv,PR_futCTRL)
+diff3D_GGWexfutvsCTRLfut1,diff_GGWexfutvsCTRLfut1=diff_sims(PR_futGGWex,PR_futCTRL)
+#diff3D_CTRLfutvsCTRLcur1_26,diff_CTRLfutvsCTRLcur1_26=diff_sims(PR_futCTRL26,PR_curCTRL)
+diff3D_GGWfutvsCTRLfut1_26,diff_GGWfutvsCTRLfut1_26=diff_sims(PR_futGGW26,PR_futCTRL26)
+diff3D_GGWrvfutvsCTRLfut1_26,diff_GGWrvfutvsCTRLfut1_26=diff_sims(PR_futGGWrv26,PR_futCTRL26)
+diff3D_GGWlvfutvsCTRLfut1_26,diff_GGWlvfutvsCTRLfut1_26=diff_sims(PR_futGGWlv26,PR_futCTRL26)
+diff3D_GGWexfutvsCTRLfut1_26,diff_GGWexfutvsCTRLfut1_26=diff_sims(PR_futGGWex26,PR_futCTRL26)
+#calculate percentage differences
+#perc_CTRLfutvsCTRLcur1=(diff_CTRLfutvsCTRLcur1/PRmean_curCTRL)*100
+perc_GGWfutvsCTRLfut1=(diff_GGWfutvsCTRLfut1/PRmean_futCTRL)*100
+perc_GGWrvfutvsCTRLfut1=(diff_GGWrvfutvsCTRLfut1/PRmean_futCTRL)*100
+perc_GGWlvfutvsCTRLfut1=(diff_GGWlvfutvsCTRLfut1/PRmean_futCTRL)*100
+perc_GGWexfutvsCTRLfut1=(diff_GGWexfutvsCTRLfut1/PRmean_futCTRL)*100
+#perc_CTRLfutvsCTRLcur1_26=(diff_CTRLfutvsCTRLcur1_26/PRmean_curCTRL)*100
+perc_GGWfutvsCTRLfut1_26=(diff_GGWfutvsCTRLfut1_26/PRmean_futCTRL26)*100
+perc_GGWfutvsCTRLfut1_26=(diff_GGWfutvsCTRLfut1_26/PRmean_futCTRL26)*100
+perc_GGWrvfutvsCTRLfut1_26=(diff_GGWrvfutvsCTRLfut1_26/PRmean_futCTRL26)*100
+perc_GGWlvfutvsCTRLfut1_26=(diff_GGWlvfutvsCTRLfut1_26/PRmean_futCTRL26)*10
+perc_GGWexfutvsCTRLfut1_26=(diff_GGWexfutvsCTRLfut1_26/PRmean_futCTRL26)*100
+#calculate ttests for differences
+#D_CTRLfutvsCTRLcur,levels_CTRLfutvsCTRLcur=wilctest(diff3D_CTRLfutvsCTRLcur1)
+D_GGWfutvsCTRLfut,levels_GGWfutvsCTRLfut=wilctest(diff3D_GGWfutvsCTRLfut1)
+D_GGWrvfutvsCTRLfut,levels_GGWrvfutvsCTRLfut=wilctest(diff3D_GGWrvfutvsCTRLfut1)
+D_GGWlvfutvsCTRLfut,levels_GGWlvfutvsCTRLfut=wilctest(diff3D_GGWlvfutvsCTRLfut1)
+D_GGWexfutvsCTRLfut,levels_GGWexfutvsCTRLfut=wilctest(diff3D_GGWexfutvsCTRLfut1)
+#D_CTRLfutvsCTRLcur_26,levels_CTRLfutvsCTRLcur_26=wilctest(diff3D_CTRLfutvsCTRLcur1_26)
+D_GGWfutvsCTRLfut_26,levels_GGWfutvsCTRLfut_26=wilctest(diff3D_GGWfutvsCTRLfut1_26)
+D_GGWrvfutvsCTRLfut_26,levels_GGWrvfutvsCTRLfut_26=wilctest(diff3D_GGWrvfutvsCTRLfut1_26)
+D_GGWlvfutvsCTRLfut_26,levels_GGWlvfutvsCTRLfut_26=wilctest(diff3D_GGWlvfutvsCTRLfut1_26)
+D_GGWexfutvsCTRLfut_26,levels_GGWexfutvsCTRLfut_26=wilctest(diff3D_GGWexfutvsCTRLfut1_26)
+
+#mask oceans for climatologies, differences and percentages
+PRclimo_curCTRL= maskoceans(lon,lat,PRmean_curCTRL[:,:])
+#PRclimo_futCTRL = maskoceans(lon,lat,PRmean_futCTRL[:,:])
+#PRclimo_futGGW = maskoceans(lon,lat,PRmean_futGGW[:,:])
+#PRclimo_futGGWrv = maskoceans(lon,lat,PRmean_futGGWrv[:,:])
+#PRclimo_futGGWlv = maskoceans(lon,lat,PRmean_futGGWlv[:,:])
+#PRclimo_futGGWex = maskoceans(lon,lat,PRmean_futGGWex[:,:])
+#PRclimo_futCTRL_26 = maskoceans(lon,lat,PRmean_futCTRL26[:,:])
+#PRclimo_futGGW_26 = maskoceans(lon,lat,PRmean_futGGW26[:,:])
+#PRclimo_futGGWrv_26 = maskoceans(lon,lat,PRmean_futGGWrv26[:,:])
+#PRclimo_futGGWlv_26 = maskoceans(lon,lat,PRmean_futGGWlv26[:,:])
+#PRclimo_futGGWex_26 = maskoceans(lon,lat,PRmean_futGGWex26[:,:])
+
+#diff_CTRLfutvsCTRLcur = maskoceans(lon,lat,diff_CTRLfutvsCTRLcur1[:,:])
+#perc_CTRLfutvsCTRLcur =  maskoceans(lon,lat,perc_CTRLfutvsCTRLcur1[:,:])
+diff_GGWfutvsCTRLfut = maskoceans(lon,lat,diff_GGWfutvsCTRLfut1[:,:])
+perc_GGWfutvsCTRLfut=  maskoceans(lon,lat,perc_GGWfutvsCTRLfut1[:,:])
+diff_GGWrvfutvsCTRLfut = maskoceans(lon,lat,diff_GGWrvfutvsCTRLfut1[:,:])
+perc_GGWrvfutvsCTRLfut=  maskoceans(lon,lat,perc_GGWrvfutvsCTRLfut1[:,:])
+diff_GGWlvfutvsCTRLfut = maskoceans(lon,lat,diff_GGWlvfutvsCTRLfut1[:,:])
+perc_GGWllvfutvsCTRLfut=  maskoceans(lon,lat,perc_GGWlvfutvsCTRLfut1[:,:])
+diff_GGWexfutvsCTRLfut = maskoceans(lon,lat,diff_GGWexfutvsCTRLfut1[:,:])
+perc_GGWexfutvsCTRLfut=  maskoceans(lon,lat,perc_GGWexfutvsCTRLfut1[:,:])
+#diff_CTRLfutvsCTRLcur_26 = maskoceans(lon,lat,diff_CTRLfutvsCTRLcur1_26[:,:])
+#perc_CTRLfutvsCTRLcur_26 =  maskoceans(lon,lat,perc_CTRLfutvsCTRLcur1_26[:,:])
+diff_GGWfutvsCTRLfut_26 = maskoceans(lon,lat,diff_GGWfutvsCTRLfut1_26[:,:])
+perc_GGWfutvsCTRLfut_26=  maskoceans(lon,lat,perc_GGWfutvsCTRLfut1_26[:,:])
+diff_GGWrvfutvsCTRLfut_26 = maskoceans(lon,lat,diff_GGWrvfutvsCTRLfut1_26[:,:])
+perc_GGWrvfutvsCTRLfut_26=  maskoceans(lon,lat,perc_GGWrvfutvsCTRLfut1_26[:,:])
+diff_GGWlvfutvsCTRLfut_26 = maskoceans(lon,lat,diff_GGWlvfutvsCTRLfut1_26[:,:])
+perc_GGWlvfutvsCTRLfut_26=  maskoceans(lon,lat,perc_GGWlvfutvsCTRLfut1_26[:,:])
+diff_GGWexfutvsCTRLfut_26 = maskoceans(lon,lat,diff_GGWexfutvsCTRLfut1_26[:,:])
+perc_GGWexfutvsCTRLfut_26=  maskoceans(lon,lat,perc_GGWexfutvsCTRLfut1_26[:,:])
+
+
+#start plotting part
+
+#define some lists useful for plotting loop
+Ds = [0, D_GGWrvfutvsCTRLfut_26,D_GGWrvfutvsCTRLfut,D_GGWlvfutvsCTRLfut_26,D_GGWlvfutvsCTRLfut,
+        D_GGWfutvsCTRLfut_26,D_GGWfutvsCTRLfut,D_GGWexfutvsCTRLfut_26,D_GGWexfutvsCTRLfut]
+Levels = [0, levels_GGWrvfutvsCTRLfut_26,levels_GGWrvfutvsCTRLfut,levels_GGWlvfutvsCTRLfut_26,levels_GGWlvfutvsCTRLfut,
+        levels_GGWfutvsCTRLfut_26,levels_GGWfutvsCTRLfut,levels_GGWexfutvsCTRLfut_26,levels_GGWexfutvsCTRLfut]
+diffs = [0, diff_GGWrvfutvsCTRLfut_26,diff_GGWrvfutvsCTRLfut,diff_GGWlvfutvsCTRLfut_26,diff_GGWlvfutvsCTRLfut,
+                    diff_GGWfutvsCTRLfut_26,diff_GGWfutvsCTRLfut,diff_GGWexfutvsCTRLfut_26,diff_GGWexfutvsCTRLfut]
+letters=[0,'A','B','C','D','E','F','G','H']
+GGWs=[0,"GGW$_{LOW}$",0,"GGW$_{MED}$",0,"GGW$_{HIGH}$",0,"GGW$_{EXT}$"]
+# Plotting
+cmap = mpl.colors.ListedColormap(['xkcd:medium brown','xkcd:dark tan','xkcd:tan','xkcd:light tan','xkcd:white','xkcd:white','xkcd:light aqua','xkcd:aquamarine','xkcd:green blue','xkcd:blue green'])
+
+cmap.set_over('xkcd:dark blue green')
+cmap.set_under('xkcd:brown')
+anomalies_array = [-500,-250,-100,-25,-10,0,10,25,100,250,500]
+norm = mpl.colors.BoundaryNorm(anomalies_array, cmap.N)
+
+figsize = (20,15)      # Figure size
+fig = plt.figure(figsize=figsize)
+def sub_plot(n):
+    ax = fig.add_subplot(4,2,n)
+    m.drawcoastlines()
+    m.drawcountries()
+    m.drawstates()
+    if (n % 2) == 0:
+        m.drawparallels(np.arange(-30.,50.,15.),labels=[0,0,0,0],linewidth=0,size=10) # MY DOMAIN GOES FROM  -35 - +10
+    else:
+        m.drawparallels(np.arange(-30.,50.,15.),labels=[1,0,0,0],linewidth=0,size=10) # MY DOMAIN GOES FROM  -35 - +10
+        plt.annotate(GGWs[n], (-0.2, 0.5),fontsize=15,xycoords="axes fraction", va="center", ha="center",color='k',fontweight='bold')
+    if n > 6:
+        m.drawmeridians(np.arange(-30.,60.,10.),labels=[0,0,0,1],linewidth=0,rotation=45,size=10) # MY DOMAIN GOES FROM -15 - +55
+    else:
+        m.drawmeridians(np.arange(-30.,60.,10.),labels=[0,0,0,0],linewidth=0,rotation=45,size=10) # MY DOMAIN GOES FROM -15 - +55
+    ax = m.contourf(xx,yy,diffs[n],anomalies_array,cmap=cmap,norm=norm,extend='both')
+    ax0 = m.contourf(xx,yy,Ds[n],levels=Levels[n],colors='none',hatches=['..',None])
+    plt.annotate(letters[n], (0.02, 1.05),fontsize=13,xycoords="axes fraction", va="center", ha="center",color='k',fontweight='bold')
+    if n==8:
+        fig.subplots_adjust(bottom=0.15)
+        cbar_ax = fig.add_axes([0.75, 0.37, 0.02,0.28])
+        cbar=fig.colorbar(ax, cax=cbar_ax, orientation='vertical',ticks=anomalies_array)
+        cbar.ax.set_title('[mm]',size=12)
+        #cbar.ax.set_yticklabels(['-2','-1.5','-1','-0.5','-0.25','0','0.25','0.5','1','1.5','2'])
+        plt.setp(cbar.ax.get_xticklabels(),fontsize=15)#,rotation=30)
+    return ax
+
+ax1 = sub_plot(1)
+plt.title('RCP2.6',fontsize=15,fontweight='bold',style='italic')
+ax2 = sub_plot(2)
+plt.title('RCP8.5',fontsize=15,fontweight='bold',style='italic')
+ax3 = sub_plot(3)
+ax4 = sub_plot(4)
+ax5 = sub_plot(5)
+ax6 = sub_plot(6)
+ax7 = sub_plot(7)
+ax8 = sub_plot(8)
+#cbar.ax.set_title('['+r"${\rm ^\circ C}$"+']',size=12)
+#plt.setp(cbar.ax.get_xticklabels(),fontsize=15)#,rotation=30
+plt.suptitle('ΔPREC JJAS',x=0.51,y=0.94,fontsize=20,fontweight='bold')
+plt.subplots_adjust(wspace=-0.6)
+plt.subplots_adjust(hspace=0.25)
+image_output_dpi = 300
+plt.savefig('/orca/ingrosso/GEM_PhD/Climatology/Future/Figure/PR/PRmm_JJAS_4seasons'+'.png', dpi=image_output_dpi, format='png',bbox_inches='tight') # Most backends support png, pdf, ps, eps and svg
+
+plt.savefig('/orca/ingrosso/GEM_PhD/Climatology/Future/Figure/PR/PRmm_JJAS_4seasons'+'.pdf', dpi=image_output_dpi, format='pdf',bbox_inches='tight')
+
+
+
+
+"""
+# Figure settings - if needed
+# ---------------------------
+
+#define color maps
+cmap = mpl.colors.ListedColormap(['xkcd:medium brown','xkcd:dark tan','xkcd:tan','xkcd:light tan','xkcd:pale','xkcd:ice blue','xkcd:light aqua','xkcd:aquamarine','xkcd:green blue','xkcd:blue green'])
+cmap.set_over('xkcd:dark blue green')
+cmap.set_under('xkcd:brown')
+
+cmap1 = mpl.colors.ListedColormap(['xkcd:medium brown','xkcd:dark tan','xkcd:tan','xkcd:light tan','xkcd:white','xkcd:white','xkcd:light aqua','xkcd:aquamarine','xkcd:green blue','xkcd:blue green'])
+
+cmap1.set_over('xkcd:dark blue green')
+cmap1.set_under('xkcd:brown')
+
+col_array = [10,20,30,50,100,200,300,400,500,1000,1500]
+norm = mpl.colors.BoundaryNorm(col_array, cmap.N)
+
+figsize = (20,15)      # Figure size
+fig = plt.figure(figsize=figsize)
+anomalies_array1 = [-500,-250,-100,-25,-10,0,10,25,100,250,500]
+#anomalies_array = [0,0.5,1,1.5,2,2.5,3,3.5,4,4.5,5]
+#anomalies_array = [-1.5,-1,-0.75,-0.5,-0.25,0,0.25,0.5,0.75,1,1.5]
+norm1 = mpl.colors.BoundaryNorm(anomalies_array1, cmap.N)
+ax1 = fig.add_subplot(2,3,1)
+
+#m.drawlsmask(land_color='cyan',ocean_color='white')
+m.drawcoastlines()
+m.drawcountries()
+m.drawstates()
+#m.drawmapboundary(fill_color='white')
+m.drawparallels(np.arange(-30.,50.,10.),labels=[1,0,0,0],size=15) # MY DOMAIN GOES FROM  -35 - +10
+m.drawmeridians(np.arange(-30.,60.,10.),labels=[0,0,0,1],rotation=45,size=15) # MY DOMAIN GOES FROM -15 - +55
+ax1 = m.contourf(xx,yy,diff_CTRLfutvsCTRLcur_26,anomalies_array1,cmap=cmap1,norm=norm1,extend='both')
+
+plt.title('RCP2.6-PD JJAS PREC',fontsize=15)
+
+cbar = m.colorbar(ax1,location='right',ticks=anomalies_array1)
+cbar.set_ticklabels(anomalies_array1)
+
+cbar.ax.set_title('[mm]',size=12)
+cbar.ax.tick_params(labelsize=15)
+plt.annotate("b", (0.02, 1.05),fontsize=15,xycoords="axes fraction", va="center", ha="center",color='k',fontweight='bold')
+ax1 = m.contourf(xx,yy,D_CTRLfutvsCTRLcur_26,levels=levels_CTRLfutvsCTRLcur_26,colors='none',hatches=['..',None])
+
+ax2 = fig.add_subplot(2,3,2)
+m.drawcoastlines()
+m.drawcountries()
+m.drawstates()
+
+m.drawparallels(np.arange(-30.,50.,10.),labels=[0,0,1,0],size=15) # MY DOMAIN GOES FROM  -35 - +10
+m.drawmeridians(np.arange(-30.,60.,10.),labels=[0,0,0,1],rotation=45,size=15) # MY DOMAIN GOES FROM -15 - +55
+ax2 = m.contourf(xx,yy,diff_GGWfutvsCTRLfut_26,anomalies_array1,cmap=cmap1,norm=norm1,extend='both')
+
+plt.title('GGW$_{RCP2.6}$-RCP2.6 JJAS PREC',fontsize=15)
+
+cbar = m.colorbar(ax2,location='right',ticks=anomalies_array1)
+cbar.set_ticklabels(anomalies_array1)
+
+cbar.ax.set_title('[mm]',size=12)
+cbar.ax.tick_params(labelsize=15)
+plt.annotate("c", (0.02, 1.05),fontsize=15,xycoords="axes fraction", va="center", ha="center",color='k',fontweight='bold')
+ax2 = m.contourf(xx,yy,D_GGWfutvsCTRLfut_26,levels=levels_GGWfutvsCTRLfut_26,colors='none',hatches=['..',None])
+
+ax4 = fig.add_subplot(2,3,3)
+m.drawcoastlines()
+m.drawcountries()
+m.drawstates()
+m.drawparallels(np.arange(-30.,50.,10.),labels=[0,0,1,0],size=15) # MY DOMAIN GOES FROM  -35 - +10
+m.drawmeridians(np.arange(-30.,60.,10.),labels=[0,0,0,1],rotation=45,size=15) # MY DOMAIN GOES FROM -15 - +55
+ax3 = m.contourf(xx,yy,diff_GGWexfutvsCTRLfut_26,anomalies_array1,cmap=cmap1,norm=norm1,extend='both')
+
+plt.title('GGWext$_{RCP2.6}$-RCP2.6 JJAS PREC',fontsize=15)
+
+#cbar = mpl.colorbar.ColorbarBase(ax3,cmap=cmap,norm1=norm1)
+cbar = m.colorbar(ax3,location='right',ticks=anomalies_array1)
+cbar.set_ticklabels(anomalies_array1)
+
+cbar.ax.set_title('[mm]',size=12)
+cbar.ax.tick_params(labelsize=15)
+plt.annotate("d", (0.02, 1.05),fontsize=15,xycoords="axes fraction", va="center", ha="center",color='k',fontweight='bold')
+ax3 = m.contourf(xx,yy,D_GGWexfutvsCTRLfut_26,levels=levels_GGWexfutvsCTRLfut_26,colors='none',hatches=['..',None])
+
+ax4 = fig.add_subplot(2,3,4)
+
+#m.drawlsmask(land_color='cyan',ocean_color='white')
+m.drawcoastlines()
+m.drawcountries()
+m.drawstates()
+#m.drawmapboundary(fill_color='white')
+m.drawparallels(np.arange(-30.,50.,10.),labels=[1,0,0,0],size=15) # MY DOMAIN GOES FROM  -35 - +10
+m.drawmeridians(np.arange(-30.,60.,10.),labels=[0,0,0,1],rotation=45,size=15) # MY DOMAIN GOES FROM -15 - +55
+ax4 = m.contourf(xx,yy,diff_CTRLfutvsCTRLcur,anomalies_array1,cmap=cmap1,norm=norm1,extend='both')
+
+plt.title('RCP8.5-PD JJAS PREC',fontsize=15)
+
+cbar = m.colorbar(ax4,location='right',ticks=anomalies_array1)
+cbar.set_ticklabels(anomalies_array1)
+
+cbar.ax.set_title('[mm]',size=12)
+cbar.ax.tick_params(labelsize=15)
+plt.annotate("e", (0.02, 1.05),fontsize=15,xycoords="axes fraction", va="center", ha="center",color='k',fontweight='bold')
+ax4 = m.contourf(xx,yy,D_CTRLfutvsCTRLcur,levels=levels_CTRLfutvsCTRLcur,colors='none',hatches=['..',None])
+
+ax5 = fig.add_subplot(2,3,5)
+m.drawcoastlines()
+m.drawcountries()
+m.drawstates()
+
+m.drawparallels(np.arange(-30.,50.,10.),labels=[0,0,1,0],size=15) # MY DOMAIN GOES FROM  -35 - +10
+m.drawmeridians(np.arange(-30.,60.,10.),labels=[0,0,0,1],rotation=45,size=15) # MY DOMAIN GOES FROM -15 - +55
+ax5 = m.contourf(xx,yy,diff_GGWfutvsCTRLfut,anomalies_array1,cmap=cmap1,norm=norm1,extend='both')
+
+plt.title('GGW$_{RCP8.5}$-RCP8.5 JJAS PREC',fontsize=15)
+
+cbar = m.colorbar(ax5,location='right',ticks=anomalies_array1)
+cbar.set_ticklabels(anomalies_array1)
+
+cbar.ax.set_title('[mm]',size=12)
+cbar.ax.tick_params(labelsize=15)
+plt.annotate("f", (0.02, 1.05),fontsize=15,xycoords="axes fraction", va="center", ha="center",color='k',fontweight='bold')
+ax5 = m.contourf(xx,yy,D_GGWfutvsCTRLfut,levels=levels_GGWfutvsCTRLfut,colors='none',hatches=['..',None])
+
+ax6 = fig.add_subplot(2,3,6)
+m.drawcoastlines()
+m.drawcountries()
+m.drawstates()
+m.drawparallels(np.arange(-30.,50.,10.),labels=[0,0,1,0],size=15) # MY DOMAIN GOES FROM  -35 - +10
+m.drawmeridians(np.arange(-30.,60.,10.),labels=[0,0,0,1],rotation=45,size=15) # MY DOMAIN GOES FROM -15 - +55
+ax6 = m.contourf(xx,yy,diff_GGWexfutvsCTRLfut,anomalies_array1,cmap=cmap1,norm=norm1,extend='both')
+
+plt.title('GGWext$_{RCP8.5}$-RCP8.5 JJAS PREC',fontsize=15)
+
+#cbar = mpl.colorbar.ColorbarBase(ax3,cmap=cmap,norm1=norm1)
+cbar = m.colorbar(ax6,location='right',ticks=anomalies_array1)
+cbar.set_ticklabels(anomalies_array1)
+
+cbar.ax.set_title('[mm]',size=12)
+cbar.ax.tick_params(labelsize=15)
+plt.annotate("g", (0.02, 1.05),fontsize=15,xycoords="axes fraction", va="center", ha="center",color='k',fontweight='bold')
+ax6 = m.contourf(xx,yy,D_GGWexfutvsCTRLfut,levels=levels_GGWexfutvsCTRLfut,colors='none',hatches=['..',None])
+plt.subplots_adjust(wspace=0.2)
+plt.subplots_adjust(hspace=-0.6)
+
+image_output_dpi = 500
+plt.savefig('/orca/ingrosso/GEM_PhD/Climatology/Future/Figure/PR/PRmm_JJAS_paper'+'.png', dpi=image_output_dpi, format='png',bbox_inches='tight') # Most backends support png, pdf, ps, eps and svg
+
+
+figsize = (20,15)      # Figure size
+fig = plt.figure(figsize=figsize)
+anomalies_array1 = [-250,-150,-50,-25,-10,0,10,25,50,150,250]
+norm2 = mpl.colors.BoundaryNorm(anomalies_array1, cmap.N)
+
+ax1 = fig.add_subplot(2,3,1)
+
+#m.drawlsmask(land_color='cyan',ocean_color='white')
+m.drawcoastlines()
+m.drawcountries()
+m.drawstates()
+#m.drawmapboundary(fill_color='white')
+m.drawparallels(np.arange(-30.,50.,10.),labels=[1,0,0,0],size=15) # MY DOMAIN GOES FROM  -35 - +10
+m.drawmeridians(np.arange(-30.,60.,10.),labels=[0,0,0,1],rotation=45,size=15) # MY DOMAIN GOES FROM -15 - +55
+ax1 = m.contourf(xx,yy,perc_CTRLfutvsCTRLcur_26,anomalies_array1,cmap=cmap1,norm=norm2,extend='both')
+
+plt.title('RCP2.6-PD JJAS PREC',fontsize=15)
+
+cbar = m.colorbar(ax1,location='right',ticks=anomalies_array1)
+
+cbar.ax.set_title('[%]',size=12)
+cbar.ax.tick_params(labelsize=15)
+
+ax1 = m.contourf(xx,yy,D_CTRLfutvsCTRLcur_26,levels=levels_CTRLfutvsCTRLcur_26,colors='none',hatches=['..',None])
+
+ax2 = fig.add_subplot(2,3,2)
+
+m.drawcoastlines()
+m.drawcountries()
+m.drawstates()
+
+m.drawparallels(np.arange(-30.,50.,10.),labels=[0,0,1,0],size=15) # MY DOMAIN GOES FROM  -35 - +10
+m.drawmeridians(np.arange(-30.,60.,10.),labels=[0,0,0,1],rotation=45,size=15) # MY DOMAIN GOES FROM -15 - +55
+ax2 = m.contourf(xx,yy,perc_GGWfutvsCTRLfut_26,anomalies_array1,cmap=cmap1,norm=norm2,extend='both')
+
+plt.title('GGW$_{RCP2.6}$-RCP2.6 JJAS PREC',fontsize=15)
+
+cbar = m.colorbar(ax2,location='right',ticks=anomalies_array1)
+
+cbar.ax.set_title('[%]',size=12)
+cbar.ax.tick_params(labelsize=15)
+
+ax2 = m.contourf(xx,yy,D_GGWfutvsCTRLfut_26,levels=levels_GGWfutvsCTRLfut_26,colors='none',hatches=['..',None])
+ax3 = fig.add_subplot(2,3,3)
+m.drawcoastlines()
+m.drawcountries()
+m.drawstates()
+m.drawparallels(np.arange(-30.,50.,10.),labels=[0,0,1,0],size=15) # MY DOMAIN GOES FROM  -35 - +10
+m.drawmeridians(np.arange(-30.,60.,10.),labels=[0,0,0,1],rotation=45,size=15) # MY DOMAIN GOES FROM -15 - +55
+ax3 = m.contourf(xx,yy,perc_GGWexfutvsCTRLfut_26,anomalies_array1,cmap=cmap1,norm=norm2,extend='both')
+
+plt.title('GGWext$_{RCP2.6}$-RCP2.6 JJAS PREC',fontsize=15)
+
+#cbar = mpl.colorbar.ColorbarBase(ax3,cmap=cmap,norm1=norm1)
+cbar = m.colorbar(ax3,location='right',ticks=anomalies_array1)
+
+cbar.ax.set_title('[%]',size=12)
+cbar.ax.tick_params(labelsize=15)
+
+ax3 = m.contourf(xx,yy,D_GGWexfutvsCTRLfut_26,levels=levels_GGWexfutvsCTRLfut_26,colors='none',hatches=['..',None])
+
+ax4 = fig.add_subplot(2,3,4)
+
+#m.drawlsmask(land_color='cyan',ocean_color='white')
+m.drawcoastlines()
+m.drawcountries()
+m.drawstates()
+#m.drawmapboundary(fill_color='white')
+m.drawparallels(np.arange(-30.,50.,10.),labels=[1,0,0,0],size=15) # MY DOMAIN GOES FROM  -35 - +10
+m.drawmeridians(np.arange(-30.,60.,10.),labels=[0,0,0,1],rotation=45,size=15) # MY DOMAIN GOES FROM -15 - +55
+ax4 = m.contourf(xx,yy,perc_CTRLfutvsCTRLcur,anomalies_array1,cmap=cmap1,norm=norm2,extend='both')
+
+plt.title('RCP8.5-PD JJAS PREC',fontsize=15)
+
+cbar = m.colorbar(ax4,location='right',ticks=anomalies_array1)
+
+cbar.ax.set_title('[%]',size=12)
+cbar.ax.tick_params(labelsize=15)
+
+ax4 = m.contourf(xx,yy,D_CTRLfutvsCTRLcur,levels=levels_CTRLfutvsCTRLcur,colors='none',hatches=['..',None])
+
+ax5 = fig.add_subplot(2,3,5)
+
+m.drawcoastlines()
+m.drawcountries()
+m.drawstates()
+
+m.drawparallels(np.arange(-30.,50.,10.),labels=[0,0,1,0],size=15) # MY DOMAIN GOES FROM  -35 - +10
+m.drawmeridians(np.arange(-30.,60.,10.),labels=[0,0,0,1],rotation=45,size=15) # MY DOMAIN GOES FROM -15 - +55
+ax5 = m.contourf(xx,yy,perc_GGWfutvsCTRLfut,anomalies_array1,cmap=cmap1,norm=norm2,extend='both')
+
+plt.title('GGW$_{RCP8.5}$-RCP8.5 JJAS PREC',fontsize=15)
+
+cbar = m.colorbar(ax5,location='right',ticks=anomalies_array1)
+
+cbar.ax.set_title('[%]',size=12)
+cbar.ax.tick_params(labelsize=15)
+
+ax5 = m.contourf(xx,yy,D_GGWfutvsCTRLfut,levels=levels_GGWfutvsCTRLfut,colors='none',hatches=['..',None])
+
+ax6 = fig.add_subplot(2,3,6)
+m.drawcoastlines()
+m.drawcountries()
+m.drawstates()
+m.drawparallels(np.arange(-30.,50.,10.),labels=[0,0,1,0],size=15) # MY DOMAIN GOES FROM  -35 - +10
+m.drawmeridians(np.arange(-30.,60.,10.),labels=[0,0,0,1],rotation=45,size=15) # MY DOMAIN GOES FROM -15 - +55
+ax6 = m.contourf(xx,yy,perc_GGWexfutvsCTRLfut,anomalies_array1,cmap=cmap1,norm=norm2,extend='both')
+
+plt.title('GGWext$_{RCP8.5}$-RCP8.5 JJAS PREC',fontsize=15)
+
+#cbar = mpl.colorbar.ColorbarBase(ax3,cmap=cmap,norm1=norm1)
+cbar = m.colorbar(ax6,location='right',ticks=anomalies_array1)
+
+cbar.ax.set_title('[%]',size=12)
+cbar.ax.tick_params(labelsize=15)
+plt.subplots_adjust(wspace=0.2)
+plt.subplots_adjust(hspace=-0.6)
+ax6 = m.contourf(xx,yy,D_GGWexfutvsCTRLfut,levels=levels_GGWexfutvsCTRLfut,colors='none',hatches=['..',None])
+image_output_dpi = 150
+plt.savefig('/orca/ingrosso/GEM_PhD/Climatology/Future/Figure/PR/PR%_JJAS_paper'+'.png', dpi=image_output_dpi, format='png',bbox_inches='tight') #
+
+"""
